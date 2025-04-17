@@ -1,0 +1,266 @@
+Here’s the updated version with separate **Pause** and **Restart** buttons (in addition to **Stop**):
+
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Focus Session App - Dark Mode</title>
+  <style>
+    /* Reset and dark mode styles */
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #121212;
+      color: #e0e0e0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 20px;
+    }
+    .container {
+      background: #1E1E1E;
+      max-width: 400px;
+      width: 100%;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 3px 10px rgba(0,0,0,0.6);
+    }
+    h1, h2, p {
+      text-align: center;
+      margin-bottom: 10px;
+    }
+    #session-setup, #session-timer, #session-end {
+      margin-bottom: 20px;
+      text-align: center;
+    }
+    button {
+      padding: 10px 20px;
+      margin: 5px;
+      border: none;
+      border-radius: 4px;
+      background-color: #333;
+      color: #fff;
+      font-size: 1rem;
+      cursor: pointer;
+      transition: background-color 0.3s;
+    }
+    button:hover {
+      background-color: #444;
+    }
+    input, textarea {
+      width: 90%;
+      padding: 10px;
+      margin: 5px auto;
+      border: 1px solid #444;
+      border-radius: 4px;
+      font-size: 1rem;
+      background-color: #333;
+      color: #e0e0e0;
+      display: block;
+    }
+    #timer-display {
+      font-size: 3rem;
+      margin: 20px 0;
+    }
+    ul {
+      list-style: none;
+      padding-left: 0;
+    }
+    li {
+      background: #2a2a2a;
+      margin: 5px 0;
+      padding: 10px;
+      border-radius: 4px;
+      font-size: 0.9rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Session Setup -->
+    <div id="session-setup">
+      <h1>Focus Session</h1>
+      <p>Select a duration:</p>
+      <button class="preset" data-minutes="25">25 min</button>
+      <button class="preset" data-minutes="45">45 min</button>
+      <input type="number" id="custom-minutes" placeholder="Or enter custom minutes" min="1" />
+      <input type="text" id="session-label" placeholder="Session label (optional)" />
+      <button id="start-session">Start Session</button>
+    </div>
+
+    <!-- Timer Display -->
+    <div id="session-timer" style="display: none;">
+      <h2 id="timer-label">Focus Session</h2>
+      <div id="timer-display">00:00</div>
+      <button id="pause-button">Pause</button>
+      <button id="restart-button">Restart</button>
+      <button id="stop-session">Stop</button>
+    </div>
+
+    <!-- Session End Prompt -->
+    <div id="session-end" style="display: none;">
+      <h2>Session Ended!</h2>
+      <p id="session-summary"></p>
+      <textarea id="session-notes" placeholder="What did you focus on?"></textarea>
+      <button id="save-session">Save Session</button>
+    </div>
+
+    <!-- Session History -->
+    <div id="session-history">
+      <h2>Session History</h2>
+      <ul id="history-list"></ul>
+    </div>
+  </div>
+
+  <script>
+    // UI Elements
+    const presets = document.querySelectorAll('.preset');
+    const customInput = document.getElementById('custom-minutes');
+    const labelInput = document.getElementById('session-label');
+    const startBtn = document.getElementById('start-session');
+    const setupDiv = document.getElementById('session-setup');
+    const timerDiv = document.getElementById('session-timer');
+    const timerLabel = document.getElementById('timer-label');
+    const timerDisplay = document.getElementById('timer-display');
+    const pauseBtn = document.getElementById('pause-button');
+    const restartBtn = document.getElementById('restart-button');
+    const stopBtn = document.getElementById('stop-session');
+    const endDiv = document.getElementById('session-end');
+    const summaryP = document.getElementById('session-summary');
+    const notesField = document.getElementById('session-notes');
+    const saveBtn = document.getElementById('save-session');
+    const historyUl = document.getElementById('history-list');
+
+    let countdown;
+    let remainingSecs = 0;
+    let elapsedSecs = 0;
+    let initialSecs = 0;
+
+    function formatTime(sec) {
+      const m = Math.floor(sec/60).toString().padStart(2,'0');
+      const s = (sec%60).toString().padStart(2,'0');
+      return `${m}:${s}`;
+    }
+
+    function beep(duration, freq, vol, type) {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      const ctx = new AudioCtx();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = type || 'sine';
+      osc.frequency.value = freq || 440;
+      gain.gain.value = vol || 0.5;
+      osc.start();
+      setTimeout(() => {
+        osc.stop();
+        ctx.close();
+      }, duration);
+    }
+
+    function startTimer(mins, label) {
+      initialSecs = mins * 60;
+      remainingSecs = initialSecs;
+      elapsedSecs = 0;
+      timerLabel.textContent = label || 'Focus Session';
+      timerDisplay.textContent = formatTime(remainingSecs);
+
+      setupDiv.style.display = 'none';
+      timerDiv.style.display = 'block';
+      endDiv.style.display = 'none';
+
+      beep(200, 440, 0.5, 'sine');
+      clearInterval(countdown);
+      countdown = setInterval(() => {
+        remainingSecs--;
+        elapsedSecs++;
+        timerDisplay.textContent = formatTime(remainingSecs);
+        if (remainingSecs <= 0) {
+          clearInterval(countdown);
+          finishSession();
+        }
+      }, 1000);
+    }
+
+    function finishSession() {
+      timerDiv.style.display = 'none';
+      endDiv.style.display = 'block';
+      const mins = Math.floor(elapsedSecs/60);
+      summaryP.textContent = `You focused for ${mins} minute(s).`;
+      beep(300, 330, 0.5, 'triangle');
+    }
+
+    function saveSession() {
+      const lbl = labelInput.value || 'No label';
+      const notes = notesField.value || 'No notes';
+      const ts = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+      const li = document.createElement('li');
+      li.textContent = `${ts} - ${lbl} | ${notes}`;
+      historyUl.appendChild(li);
+
+      // reset
+      labelInput.value = '';
+      customInput.value = '';
+      notesField.value = '';
+      endDiv.style.display = 'none';
+      setupDiv.style.display = 'block';
+      timerDisplay.textContent = '00:00';
+    }
+
+    // Preset buttons
+    presets.forEach(b => b.addEventListener('click', () => {
+      customInput.value = b.dataset.minutes;
+    }));
+
+    // Start
+    startBtn.addEventListener('click', () => {
+      const mins = parseInt(customInput.value, 10);
+      if (!mins || mins <= 0) {
+        alert('Enter a valid number of minutes.');
+        return;
+      }
+      startTimer(mins, labelInput.value);
+    });
+
+    // Pause
+    pauseBtn.addEventListener('click', () => {
+      clearInterval(countdown);
+    });
+
+    // Restart
+    restartBtn.addEventListener('click', () => {
+      clearInterval(countdown);
+      remainingSecs = initialSecs;
+      elapsedSecs = 0;
+      timerDisplay.textContent = formatTime(remainingSecs);
+      countdown = setInterval(() => {
+        remainingSecs--;
+        elapsedSecs++;
+        timerDisplay.textContent = formatTime(remainingSecs);
+        if (remainingSecs <= 0) {
+          clearInterval(countdown);
+          finishSession();
+        }
+      }, 1000);
+    });
+
+    // Stop early
+    stopBtn.addEventListener('click', () => {
+      clearInterval(countdown);
+      finishSession();
+    });
+
+    // Save
+    saveBtn.addEventListener('click', saveSession);
+  </script>
+</body>
+</html>
+```
